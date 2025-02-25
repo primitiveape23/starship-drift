@@ -27,6 +27,6 @@ body {
     touch-action: manipulation;
 }
 
-#startBtn:hover, #restartBtn:hover {
+#startBtn:hover {
     background-color: #00cc99;
 }

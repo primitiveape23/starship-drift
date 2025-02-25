@@ -1,7 +1,6 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const startBtn = document.getElementById('startBtn');
-const restartBtn = document.getElementById('restartBtn');
 
 // Dynamic canvas sizing
 function resizeCanvas() {
@@ -73,13 +72,11 @@ document.addEventListener('click', handleInput);
 document.addEventListener('touchstart', handleInput);
 
 startBtn.addEventListener('click', startGame);
-restartBtn.addEventListener('click', startGame); // Reuse startGame for restart
 
 function startGame() {
     gameStarted = true;
     gameOver = false; // Ensure gameOver is reset
     startBtn.style.display = 'none';
-    restartBtn.style.display = 'none'; // Hide both buttons
     resetGame();
 }
 
@@ -160,7 +157,6 @@ function update() {
             shake = 10; // Trigger screen shake
             crashSound.play().catch(() => {});
             startBtn.style.display = 'block'; // Show start button again
-            restartBtn.style.display = 'block'; // Show restart button too
         }
     }
 
@@ -212,7 +208,6 @@ function update() {
             shake = 10;
             crashSound.play().catch(() => {});
             startBtn.style.display = 'block'; // Show start button again
-            restartBtn.style.display = 'block'; // Show restart button too
         } else if (hit && ship.shield) {
             ship.shield = false;
             obstacles.splice(index, 1);

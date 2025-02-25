@@ -1,18 +1,31 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const startBtn = document.getElementById('startBtn');
 const restartBtn = document.getElementById('restartBtn');
 
-canvas.width = 800;
-canvas.height = 600;
+// Dynamic canvas sizing
+function resizeCanvas() {
+    const aspectRatio = 4 / 3; // Original 800x600 ratio
+    canvas.width = Math.min(window.innerWidth, 800); // Cap at 800 for larger screens
+    canvas.height = canvas.width / aspectRatio;
 
-// Starfield (two layers for depth)
-const stars = Array(100).fill().map(() => ({
+    // Ensure it fits vertically if needed
+    if (canvas.height > window.innerHeight) {
+        canvas.height = Math.min(window.innerHeight, 600);
+        canvas.width = canvas.height * aspectRatio;
+    }
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Starfield (reduced layers for depth)
+const stars = Array(50).fill().map(() => ({
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height,
     size: Math.random() * 2 + 1,
     speed: Math.random() * 1 + 0.5
 }));
-const distantStars = Array(50).fill().map(() => ({
+const distantStars = Array(25).fill().map(() => ({
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height,
     size: Math.random() * 1 + 0.5,
@@ -38,6 +51,7 @@ let powerUps = [];
 let frameCount = 0;
 let score = 0;
 let gameOver = false;
+let gameStarted = false; // Tracks if game is active
 const obstacleGap = 200;
 let gameSpeed = 3;
 let shake = 0; // For screen shake
@@ -47,14 +61,27 @@ const thrustSound = new Audio('thrust.wav');
 const collectSound = new Audio('collect.wav');
 const crashSound = new Audio('crash.wav');
 
-document.addEventListener('click', () => {
-    if (!gameOver) {
+// Input handling for both mouse and touch
+function handleInput(event) {
+    if (!gameOver && gameStarted) {
+        event.preventDefault(); // Prevent scrolling on touch
         ship.velocity = ship.thrust;
         thrustSound.play().catch(() => {});
     }
-});
+}
+document.addEventListener('click', handleInput);
+document.addEventListener('touchstart', handleInput);
 
-restartBtn.addEventListener('click', resetGame);
+startBtn.addEventListener('click', startGame);
+restartBtn.addEventListener('click', startGame); // Reuse startGame for restart
+
+function startGame() {
+    gameStarted = true;
+    gameOver = false; // Ensure gameOver is reset
+    startBtn.style.display = 'none';
+    restartBtn.style.display = 'none'; // Hide both buttons
+    resetGame();
+}
 
 function spawnObstacle() {
     const type = Math.random();
@@ -107,22 +134,20 @@ function spawnPowerUp() {
 }
 
 function resetGame() {
-    ship.y = 300;
+    ship.y = canvas.height / 2; // Center ship on reset
     ship.velocity = 0;
     ship.shield = false;
     ship.trail = [];
     obstacles = [];
     powerUps = [];
     score = 0;
-    gameOver = false;
     gameSpeed = 3;
     shake = 0;
-    restartBtn.style.display = 'none';
-    gameLoop();
+    if (gameStarted) gameLoop(); // Only loop if game is started
 }
 
 function update() {
-    if (gameOver) return;
+    if (gameOver || !gameStarted) return;
 
     ship.velocity += ship.gravity;
     ship.y += ship.velocity;
@@ -131,14 +156,17 @@ function update() {
         ship.y = canvas.height - ship.height;
         if (!ship.shield) {
             gameOver = true;
+            gameStarted = false; // Reset to show start screen
             shake = 10; // Trigger screen shake
             crashSound.play().catch(() => {});
+            startBtn.style.display = 'block'; // Show start button again
+            restartBtn.style.display = 'block'; // Show restart button too
         }
     }
 
-    // Engine trail
+    // Engine trail (shortened)
     ship.trail.push({ x: ship.x, y: ship.y + ship.height / 2 });
-    if (ship.trail.length > 10) ship.trail.shift();
+    if (ship.trail.length > 5) ship.trail.shift();
 
     frameCount++;
     if (frameCount % 80 === 0) spawnObstacle();
@@ -180,8 +208,11 @@ function update() {
 
         if (hit && !ship.shield) {
             gameOver = true;
+            gameStarted = false; // Reset to show start screen
             shake = 10;
             crashSound.play().catch(() => {});
+            startBtn.style.display = 'block'; // Show start button again
+            restartBtn.style.display = 'block'; // Show restart button too
         } else if (hit && ship.shield) {
             ship.shield = false;
             obstacles.splice(index, 1);
@@ -242,87 +273,98 @@ function draw() {
         ctx.fill();
     });
 
-    // Ship with trail
-    ship.trail.forEach((t, i) => {
-        ctx.fillStyle = `rgba(0, 255, 204, ${(1 - i / ship.trail.length) * 0.5})`;
-        ctx.beginPath();
-        ctx.arc(t.x, t.y, 5 - i / 2, 0, Math.PI * 2);
-        ctx.fill();
-    });
-    ctx.fillStyle = ship.shield ? '#00ff00' : '#00ffcc';
-    ctx.beginPath();
-    ctx.moveTo(ship.x, ship.y + ship.height / 2); // Nose
-    ctx.lineTo(ship.x + ship.width, ship.y); // Top wing
-    ctx.lineTo(ship.x + ship.width - 10, ship.y + ship.height / 2); // Rear top
-    ctx.lineTo(ship.x + ship.width, ship.y + ship.height); // Bottom wing
-    ctx.closePath();
-    ctx.fill();
-
-    // Obstacles
-    obstacles.forEach(obs => {
-        if (obs.type === 'gate') {
-            const pulse = Math.sin(obs.pulse) * 10;
-            ctx.fillStyle = `rgba(255, 51, 51, ${0.7 + Math.sin(obs.pulse) * 0.3})`;
-            ctx.fillRect(obs.x, 0, obs.width + pulse, obs.topHeight);
-            ctx.fillRect(obs.x, canvas.height - obs.bottomHeight, obs.width + pulse, obs.bottomHeight);
-        } else if (obs.type === 'asteroid') {
-            ctx.save();
-            ctx.translate(obs.x + obs.size / 2, obs.y + obs.size / 2);
-            ctx.rotate(obs.rotation);
-            ctx.fillStyle = '#666';
-            ctx.beginPath();
-            ctx.moveTo(0, -obs.size / 2);
-            for (let i = 0; i < 8; i++) {
-                const angle = (Math.PI * 2 / 8) * i;
-                const r = obs.size / 2 + (Math.random() - 0.5) * 10;
-                ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
-            }
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-        } else if (obs.type === 'drone') {
-            ctx.fillStyle = '#ff6666';
-            ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-            ctx.fillStyle = `rgba(255, 255, 0, ${Math.sin(obs.lightBlink) * 0.5 + 0.5})`;
-            ctx.fillRect(obs.x + obs.width - 10, obs.y + 5, 5, 5); // Blinking light
-        }
-    });
-
-    // Power-ups
-    powerUps.forEach(pu => {
-        const glowSize = pu.size / 2 + Math.sin(pu.glow) * 5;
-        ctx.fillStyle = pu.type === 'shield' ? 'rgba(0, 255, 0, 0.5)' : 'rgba(255, 255, 0, 0.5)';
-        ctx.beginPath();
-        ctx.arc(pu.x + pu.size / 2, pu.y + pu.size / 2, glowSize, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = pu.type === 'shield' ? '#00ff00' : '#ffff00';
-        ctx.beginPath();
-        ctx.arc(pu.x + pu.size / 2, pu.y + pu.size / 2, pu.size / 2, 0, Math.PI * 2);
-        ctx.fill();
-    });
-
-    // Score
-    ctx.fillStyle = '#fff';
-    ctx.font = '20px Arial';
-    ctx.fillText(`Score: ${score}`, 10, 30);
-
-    // Game over
-    if (gameOver) {
+    if (!gameStarted) {
+        // Start screen (shown initially and after game over)
         ctx.fillStyle = '#fff';
         ctx.font = '40px Arial';
-        ctx.fillText('Game Over', canvas.width / 2 - 100, canvas.height / 2);
-        restartBtn.style.display = 'block';
+        ctx.fillText('Starship Drift', canvas.width / 2 - 150, canvas.height / 2 - 50);
+        ctx.font = '20px Arial';
+        ctx.fillText('Tap or Click to Thrust', canvas.width / 2 - 100, canvas.height / 2 + 50);
+        if (gameOver) {
+            ctx.fillText(`Score: ${score}`, canvas.width / 2 - 50, canvas.height / 2 + 80); // Show last score
+        }
+    } else {
+        // Ship with trail
+        ship.trail.forEach((t, i) => {
+            ctx.fillStyle = `rgba(0, 255, 204, ${(1 - i / ship.trail.length) * 0.5})`;
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, 5 - i / 2, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        ctx.fillStyle = ship.shield ? '#00ff00' : '#00ffcc';
+        ctx.beginPath();
+        ctx.moveTo(ship.x, ship.y + ship.height / 2); // Nose
+        ctx.lineTo(ship.x + ship.width, ship.y); // Top wing
+        ctx.lineTo(ship.x + ship.width - 10, ship.y + ship.height / 2); // Rear top
+        ctx.lineTo(ship.x + ship.width, ship.y + ship.height); // Bottom wing
+        ctx.closePath();
+        ctx.fill();
+
+        // Obstacles
+        obstacles.forEach(obs => {
+            if (obs.type === 'gate') {
+                const pulse = Math.sin(obs.pulse) * 10;
+                ctx.fillStyle = `rgba(255, 51, 51, ${0.7 + Math.sin(obs.pulse) * 0.3})`;
+                ctx.fillRect(obs.x, 0, obs.width + pulse, obs.topHeight);
+                ctx.fillRect(obs.x, canvas.height - obs.bottomHeight, obs.width + pulse, obs.bottomHeight);
+            } else if (obs.type === 'asteroid') {
+                ctx.save();
+                ctx.translate(obs.x + obs.size / 2, obs.y + obs.size / 2);
+                ctx.rotate(obs.rotation);
+                ctx.fillStyle = '#666';
+                ctx.beginPath();
+                ctx.moveTo(0, -obs.size / 2);
+                for (let i = 0; i < 8; i++) {
+                    const angle = (Math.PI * 2 / 8) * i;
+                    const r = obs.size / 2 + (Math.random() - 0.5) * 10;
+                    ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            } else if (obs.type === 'drone') {
+                ctx.fillStyle = '#ff6666';
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+                ctx.fillStyle = `rgba(255, 255, 0, ${Math.sin(obs.lightBlink) * 0.5 + 0.5})`;
+                ctx.fillRect(obs.x + obs.width - 10, obs.y + 5, 5, 5); // Blinking light
+            }
+        });
+
+        // Power-ups
+        powerUps.forEach(pu => {
+            const glowSize = pu.size / 2 + Math.sin(pu.glow) * 5;
+            ctx.fillStyle = pu.type === 'shield' ? 'rgba(0, 255, 0, 0.5)' : 'rgba(255, 255, 0, 0.5)';
+            ctx.beginPath();
+            ctx.arc(pu.x + pu.size / 2, pu.y + pu.size / 2, glowSize, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = pu.type === 'shield' ? '#00ff00' : '#ffff00';
+            ctx.beginPath();
+            ctx.arc(pu.x + pu.size / 2, pu.y + pu.size / 2, pu.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Score
+        ctx.fillStyle = '#fff';
+        ctx.font = '20px Arial';
+        ctx.fillText(`Score: ${score}`, 10, 30);
+
+        // Game over (briefly shown before start screen)
+        if (gameOver) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '40px Arial';
+            ctx.fillText('Game Over', canvas.width / 2 - 100, canvas.height / 2);
+        }
     }
 
     ctx.restore();
 }
 
 function gameLoop() {
-    if (!gameOver) {
-        update();
-        draw();
-        requestAnimationFrame(gameLoop);
-    }
+    if (!gameStarted) return; // Stop loop when game ends
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
+// Initial draw to show start screen
+draw();
